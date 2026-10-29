@@ -1,205 +1,213 @@
-import random
+from pydantic import BaseModel
+import secrets
 import string
-from collections import defaultdict
+import hashlib
 from datetime import datetime, timedelta, timezone
+from collections import defaultdict
+import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from asyncpg import Connection
 
-from app.core.database import get_pool
-from app.core.mail import send_otp_email
-from app.models.schemas import RequestOTPInput, VerifyOTPInput
+from app.core.database import get_db_connection
+from app.core.security import create_access_token, get_current_user
+from app.core.config import settings
+from app.models.schemas import RequestOTPInput, VerifyOTPInput, TokenResponse, UserOut
 
 router = APIRouter()
 
+# ── Stockage temporaire des OTP en mémoire ──────────────────────────────────
+# Format: { phone_number: {"hash": str, "expires_at": datetime, "attempts": int} }
+_otp_store = defaultdict(lambda: {"hash": None, "expires_at": None, "attempts": 0})
+MAX_OTP_ATTEMPTS = 5
 
 def _utcnow() -> datetime:
-    """Retourne l'heure UTC actuelle SANS tzinfo (compatible asyncpg)."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
-
 def _generate_otp() -> str:
-    """Génère un code OTP numérique à 6 chiffres (entropie : 1/1 000 000)."""
-    return "".join(random.choices(string.digits, k=6))
+    return "".join(secrets.choice(string.digits) for _ in range(6))
 
-
-# ── Protection brute-force (C-2) ────────────────────────────────────────────
-# Stockage en mémoire : { email: {"count": int, "locked_until": datetime|None} }
-# Suffisant pour un déploiement single-worker (Render free tier).
-# Pour un déploiement multi-workers, migrer vers Redis.
-_otp_attempts: dict = defaultdict(lambda: {"count": 0, "locked_until": None})
-
-MAX_OTP_ATTEMPTS = 5          # Nombre de tentatives avant verrouillage
-LOCKOUT_MINUTES   = 15        # Durée du verrouillage en minutes
-
-
-def _check_brute_force(email: str) -> None:
-    """
-    Vérifie si l'email est actuellement verrouillé.
-    Lève HTTPException 429 si c'est le cas.
-    """
-    state = _otp_attempts[email]
-    if state["locked_until"] and _utcnow() < state["locked_until"]:
-        remaining = int((state["locked_until"] - _utcnow()).total_seconds() / 60) + 1
-        raise HTTPException(
-            status_code=429,
-            detail=f"Trop de tentatives. Compte verrouillé pour {remaining} minute(s). Demandez un nouveau code.",
-        )
-
-
-def _record_failed_attempt(email: str) -> None:
-    """
-    Enregistre un échec de vérification.
-    Verrouille le compte si MAX_OTP_ATTEMPTS est atteint.
-    """
-    state = _otp_attempts[email]
-    state["count"] += 1
-    if state["count"] >= MAX_OTP_ATTEMPTS:
-        state["locked_until"] = _utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
-        state["count"] = 0   # Remet à zéro pour le prochain cycle
-
-
-def _reset_attempts(email: str) -> None:
-    """Remet à zéro le compteur d'échecs après un succès."""
-    _otp_attempts.pop(email, None)
+def _hash_otp(code: str) -> str:
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
 
 # ============================================================
-# POST /auth-request-otp
+# POST /auth/request-otp
 # ============================================================
-@router.post("/auth-request-otp")
+@router.post("/request-otp")
 async def request_otp(data: RequestOTPInput):
-    """
-    Génère un OTP à 6 chiffres, le sauvegarde en base (expiration 5min),
-    et l'envoie par email à l'utilisateur.
-    Le code n'est PAS retourné dans la réponse (sécurité C-1).
-    """
+    """Génère un OTP haché stocké en mémoire pour 5 minutes."""
+    phone = data.phone_number
     otp = _generate_otp()
-    expires_at = _utcnow() + timedelta(minutes=5)
+    
+    # Stockage du hash (jamais le code en clair)
+    _otp_store[phone] = {
+        "hash": _hash_otp(otp),
+        "expires_at": _utcnow() + timedelta(minutes=5),
+        "attempts": 0
+    }
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # Suppression de tout OTP précédent pour cet email (évite les doublons)
-        await conn.execute(
-            "DELETE FROM verification_codes WHERE email = $1",
-            data.email,
-        )
-        await conn.execute(
-            """
-            INSERT INTO verification_codes (email, code_otp, expires_at)
-            VALUES ($1, $2, $3)
-            """,
-            data.email,
-            otp,
-            expires_at,
-        )
-
-    # Réinitialisation du compteur brute-force à chaque nouveau code demandé
-    _reset_attempts(data.email)
-
-    try:
-        await send_otp_email(data.email, otp)
-    except Exception as e:
-        print(f"ERREUR CRITIQUE ENVOI MAIL: {str(e)}") # Ajout pour voir l'erreur sur Render
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur lors de l'envoi de l'email : {str(e)}",
-        )
-
-    # SÉCURITÉ C-1 : le champ "dev_code" est définitivement supprimé.
-    # Le code OTP ne transite QUE par email.
     return {
         "success": True,
-        "message": "Code OTP envoyé à votre adresse email.",
+        "message": "Code généré avec succès.",
+        "code": otp
     }
 
 
 # ============================================================
-# POST /auth-verify-otp
+# POST /auth/verify-otp
 # ============================================================
-@router.post("/auth-verify-otp")
-async def verify_otp(data: VerifyOTPInput):
-    """
-    Vérifie l'OTP. Si valide :
-    - UPSERT de l'utilisateur dans la table `users`
-    - Suppression de l'OTP
-    - Retourne les infos utilisateur + flag `isNewUser`
-    Protégé contre le brute-force : max 5 tentatives avant verrouillage 15 min.
-    """
-    # Vérification brute-force AVANT toute requête DB
-    _check_brute_force(data.email)
+@router.post("/verify-otp", response_model=TokenResponse)
+async def verify_otp(data: VerifyOTPInput, conn: Connection = Depends(get_db_connection)):
+    """Vérifie l'OTP, insère/met à jour l'utilisateur et retourne un JWT."""
+    phone = data.phone_number
+    record = _otp_store.get(phone)
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        record = await conn.fetchrow(
-            """
-            SELECT id, expires_at
-            FROM verification_codes
-            WHERE email = $1 AND code_otp = $2
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            data.email,
-            data.code,
-        )
+    # 1. Vérifications préalables
+    if not record or not record["hash"]:
+        raise HTTPException(status_code=400, detail="Aucun code OTP demandé pour ce numéro.")
+    
+    if _utcnow() > record["expires_at"]:
+        _otp_store.pop(phone, None)
+        raise HTTPException(status_code=400, detail="Code OTP expiré. Veuillez en redemander un.")
+    
+    if record["attempts"] >= MAX_OTP_ATTEMPTS:
+        _otp_store.pop(phone, None)
+        raise HTTPException(status_code=429, detail="Trop de tentatives. Code invalidé.")
 
-        if not record:
-            # On enregistre l'échec et on retourne une erreur générique
-            _record_failed_attempt(data.email)
-            state = _otp_attempts[data.email]
-            remaining = MAX_OTP_ATTEMPTS - state["count"]
-            raise HTTPException(
-                status_code=400,
-                detail=f"Code OTP invalide. {remaining} tentative(s) restante(s) avant verrouillage.",
-            )
+    # 2. Vérification cryptographique via digest comparison pour éviter le timing attack
+    record["attempts"] += 1
+    if not secrets.compare_digest(record["hash"], _hash_otp(data.code)):
+        remaining = MAX_OTP_ATTEMPTS - record["attempts"]
+        raise HTTPException(status_code=400, detail=f"Code invalide. {remaining} essai(s) restant(s).")
 
-        # Normalisation du datetime (asyncpg peut retourner avec ou sans tzinfo)
-        expires_at_db = record["expires_at"]
-        if expires_at_db.tzinfo is not None:
-            expires_at_db = expires_at_db.replace(tzinfo=None)
+    # 3. Succès : Nettoyage immédiat pour garantir l'usage unique
+    _otp_store.pop(phone, None)
 
-        if expires_at_db < _utcnow():
-            await conn.execute(
-                "DELETE FROM verification_codes WHERE id = $1", record["id"]
-            )
-            _reset_attempts(data.email)
-            raise HTTPException(
-                status_code=400,
-                detail="Code OTP expiré. Veuillez en demander un nouveau.",
-            )
-
-        # ── Succès : UPSERT utilisateur ──────────────────────────────────────
-        user = await conn.fetchrow(
-            """
-            INSERT INTO users (email)
+    # 4. UPSERT en base de données de l'utilisateur avec jointure coopérative
+    user = await conn.fetchrow(
+        """
+        WITH ins AS (
+            INSERT INTO users (phone_number)
             VALUES ($1)
-            ON CONFLICT (email) DO UPDATE
-                SET email = EXCLUDED.email
-            RETURNING id, email, nom, prenom, ville_par_defaut, quartier_par_defaut, photo_url, created_at
-            """,
-            data.email,
+            ON CONFLICT (phone_number) DO UPDATE 
+                SET phone_number = EXCLUDED.phone_number
+            RETURNING id, phone_number, first_name, last_name, cooperative_id, role, avatar_url, created_at
         )
+        SELECT 
+            ins.*, 
+            c.name AS cooperative_name
+        FROM ins
+        LEFT JOIN cooperatives c ON ins.cooperative_id = c.id
+        """,
+        phone
+    )
 
-        is_new_user = not bool(user["prenom"])
+    first_name = user["first_name"]
+    requires_profile_setup = True if not first_name or not str(first_name).strip() else False
 
-        await conn.execute(
-            "DELETE FROM verification_codes WHERE id = $1", record["id"]
-        )
+    parcelle = await conn.fetchrow(
+        "SELECT village, crop_type FROM parcelles WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+        user["id"]
+    )
 
-    # Réinitialisation du compteur après succès
-    _reset_attempts(data.email)
-
-    return {
-        "success": True,
-        "isValid": True,
-        "isNewUser": is_new_user,
-        "user": {
-            "id": str(user["id"]),
-            "email": user["email"],
-            "nom": user["nom"] or "",
-            "prenom": user["prenom"] or "",
-            "ville_par_defaut": user["ville_par_defaut"] or "Abidjan",
-            "quartier_par_defaut": user["quartier_par_defaut"] or "",
-            "photo_url": user["photo_url"] or "",
-        },
+    user_data = {
+        "id": str(user["id"]),
+        "phone_number": user["phone_number"],
+        "first_name": user["first_name"],
+        "last_name": user["last_name"],
+        "cooperative_id": str(user["cooperative_id"]) if user["cooperative_id"] else None,
+        "cooperative_name": user["cooperative_name"] if user["cooperative_name"] else ("Coopérative CAPED" if user["cooperative_id"] else None),
+        "role": user["role"],
+        "avatar_url": user["avatar_url"],
+        "village": parcelle["village"] if parcelle else None,
+        "culture": parcelle["crop_type"] if parcelle else None,
     }
 
+    # 5. Génération du JWT
+    token_expiry = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(user_id=str(user["id"]), expires_delta=token_expiry)
+
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "requires_profile_setup": requires_profile_setup,
+        "user": user_data
+    }
+
+
+# ============================================================
+# GET /auth/me
+# ============================================================
+@router.get("/me")
+async def get_my_profile(current_user: UserOut = Depends(get_current_user)):
+    """Récupère le profil complet de l'utilisateur connecté depuis son JWT."""
+    requires_profile_setup = True if not current_user.first_name or not str(current_user.first_name).strip() else False
+    return {
+        "user": current_user,
+        "requires_profile_setup": requires_profile_setup
+    }
+
+
+
+# ============================================================
+# POST /auth/admin-login (Connexion E-mail & Mot de passe Gérant)
+# ============================================================
+class AdminLoginInput(BaseModel):
+    email: str
+    password: str
+
+@router.post("/admin-login")
+async def admin_login(data: AdminLoginInput, conn: Connection = Depends(get_db_connection)):
+    """Connexion sécurisée pour les gérants coopérative par email et mot de passe."""
+    email = data.email.strip().lower()
+    password = data.password.strip()
+
+    ALLOWED_ADMINS = {
+        "gerant@caped.ci": "CoopIA2026!",
+        "admin@coopia.ci": "CoopIA2026!",
+        "noel.koffi@caped.ci": "CoopIA2026!",
+    }
+
+    if email not in ALLOWED_ADMINS or ALLOWED_ADMINS[email] != password:
+        raise HTTPException(
+            status_code=401,
+            detail="Adresse email ou mot de passe incorrect. Accès réservé à la gérance."
+        )
+
+    user = await conn.fetchrow(
+        """
+        SELECT 
+            u.id, u.phone_number, u.first_name, u.last_name, u.cooperative_id, u.role, u.avatar_url,
+            c.name AS cooperative_name
+        FROM users u
+        LEFT JOIN cooperatives c ON u.cooperative_id = c.id
+        WHERE u.role = 'COOP_ADMIN'
+        ORDER BY u.created_at ASC
+        LIMIT 1
+        """
+    )
+
+    if not user:
+        raise HTTPException(status_code=404, detail="Compte administrateur introuvable en base.")
+
+    token_expiry = timedelta(days=7)
+    access_token = create_access_token(user_id=str(user["id"]), expires_delta=token_expiry)
+
+    user_data = {
+        "id": str(user["id"]),
+        "phone_number": user["phone_number"],
+        "first_name": user["first_name"] or "Noel",
+        "last_name": user["last_name"] or "Koffi",
+        "email": email,
+        "cooperative_id": str(user["cooperative_id"]) if user["cooperative_id"] else None,
+        "cooperative_name": user["cooperative_name"] or "Coopérative CAPED",
+        "role": user["role"] or "COOP_ADMIN",
+        "avatar_url": user["avatar_url"],
+    }
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user_data
+    }

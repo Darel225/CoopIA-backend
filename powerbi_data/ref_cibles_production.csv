@@ -1,0 +1,37 @@
+﻿id,village,annee,mois,mois_nom,campagne,cible_tonnage_kg,cible_tonnes,cible_sacs_65kg
+CIBLE-ATTE-202605,Attecoube,2026,5,Mai,Campagne Intermédiaire 2026,250.0,0.25,4
+CIBLE-ATTE-202606,Attecoube,2026,6,Juin,Campagne Intermédiaire 2026,250.0,0.25,4
+CIBLE-ATTE-202607,Attecoube,2026,7,Juillet,Campagne Intermédiaire 2026,250.0,0.25,4
+CIBLE-ATTE-202608,Attecoube,2026,8,Août,Campagne Intermédiaire 2026,250.0,0.25,4
+CIBLE-ATTE-202609,Attecoube,2026,9,Septembre,Grande Campagne Principale 2026/2027,250.0,0.25,4
+CIBLE-ATTE-202610,Attecoube,2026,10,Octobre,Grande Campagne Principale 2026/2027,250.0,0.25,4
+CIBLE-BODO-202605,Bodokro,2026,5,Mai,Campagne Intermédiaire 2026,450.0,0.45,7
+CIBLE-BODO-202606,Bodokro,2026,6,Juin,Campagne Intermédiaire 2026,550.0,0.55,8
+CIBLE-BODO-202607,Bodokro,2026,7,Juillet,Campagne Intermédiaire 2026,350.0,0.35,5
+CIBLE-BODO-202608,Bodokro,2026,8,Août,Campagne Intermédiaire 2026,300.0,0.3,5
+CIBLE-BODO-202609,Bodokro,2026,9,Septembre,Grande Campagne Principale 2026/2027,1000.0,1.0,15
+CIBLE-BODO-202610,Bodokro,2026,10,Octobre,Grande Campagne Principale 2026/2027,1600.0,1.6,25
+CIBLE-DIVO-202605,Divo,2026,5,Mai,Campagne Intermédiaire 2026,600.0,0.6,9
+CIBLE-DIVO-202606,Divo,2026,6,Juin,Campagne Intermédiaire 2026,750.0,0.75,12
+CIBLE-DIVO-202607,Divo,2026,7,Juillet,Campagne Intermédiaire 2026,450.0,0.45,7
+CIBLE-DIVO-202608,Divo,2026,8,Août,Campagne Intermédiaire 2026,400.0,0.4,6
+CIBLE-DIVO-202609,Divo,2026,9,Septembre,Grande Campagne Principale 2026/2027,1300.0,1.3,20
+CIBLE-DIVO-202610,Divo,2026,10,Octobre,Grande Campagne Principale 2026/2027,2100.0,2.1,32
+CIBLE-MAN-202605,Man,2026,5,Mai,Campagne Intermédiaire 2026,400.0,0.4,6
+CIBLE-MAN-202606,Man,2026,6,Juin,Campagne Intermédiaire 2026,500.0,0.5,8
+CIBLE-MAN-202607,Man,2026,7,Juillet,Campagne Intermédiaire 2026,300.0,0.3,5
+CIBLE-MAN-202608,Man,2026,8,Août,Campagne Intermédiaire 2026,250.0,0.25,4
+CIBLE-MAN-202609,Man,2026,9,Septembre,Grande Campagne Principale 2026/2027,850.0,0.85,13
+CIBLE-MAN-202610,Man,2026,10,Octobre,Grande Campagne Principale 2026/2027,1350.0,1.35,21
+CIBLE-PIND-202605,Pindikro,2026,5,Mai,Campagne Intermédiaire 2026,300.0,0.3,5
+CIBLE-PIND-202606,Pindikro,2026,6,Juin,Campagne Intermédiaire 2026,400.0,0.4,6
+CIBLE-PIND-202607,Pindikro,2026,7,Juillet,Campagne Intermédiaire 2026,250.0,0.25,4
+CIBLE-PIND-202608,Pindikro,2026,8,Août,Campagne Intermédiaire 2026,250.0,0.25,4
+CIBLE-PIND-202609,Pindikro,2026,9,Septembre,Grande Campagne Principale 2026/2027,650.0,0.65,10
+CIBLE-PIND-202610,Pindikro,2026,10,Octobre,Grande Campagne Principale 2026/2027,1050.0,1.05,16
+CIBLE-SOUB-202605,Soubré,2026,5,Mai,Campagne Intermédiaire 2026,550.0,0.55,8
+CIBLE-SOUB-202606,Soubré,2026,6,Juin,Campagne Intermédiaire 2026,700.0,0.7,11
+CIBLE-SOUB-202607,Soubré,2026,7,Juillet,Campagne Intermédiaire 2026,400.0,0.4,6
+CIBLE-SOUB-202608,Soubré,2026,8,Août,Campagne Intermédiaire 2026,350.0,0.35,5
+CIBLE-SOUB-202609,Soubré,2026,9,Septembre,Grande Campagne Principale 2026/2027,1150.0,1.15,18
+CIBLE-SOUB-202610,Soubré,2026,10,Octobre,Grande Campagne Principale 2026/2027,1900.0,1.9,29

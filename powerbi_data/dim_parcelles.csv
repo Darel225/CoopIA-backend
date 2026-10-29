@@ -1,0 +1,8 @@
+﻿id,user_id,name,crop_type,superficie_ha,village,latitude,longitude,created_at
+e9933a69-7187-4ba4-b5da-f40a6e5426a6,875c2d1a-9b2e-44b9-9962-040bdd6061f9,Parcelle Principale,anacarde,0.0,Attecoube,,,2026-10-23T15:14:17.951976+00:00
+bd2e3d86-c61c-4d7a-9560-014d0fd8b3a3,549da9f8-4d4b-4f2a-93bc-3a64b8aba9b0,Parcelle Principale,cacao,3.8,Bodokro,7.45,-4.88,2026-10-18T01:24:02.595761+00:00
+5167da0d-4e11-4c5b-b06e-03ae4b4849aa,9bade624-75ae-497f-a076-6c419fbcc1a1,Parcelle Djiboua,cacao,5.0,Divo,5.83,-5.35,2026-10-18T03:17:46.981286+00:00
+d833dcdd-e190-4469-9559-44b47ead9895,2a3fe7c0-de5a-49f3-bf0a-fff21c2d64bb,Champ Montagnard,café,3.2,Man,7.41,-7.55,2026-10-18T03:17:46.981286+00:00
+8f166a2f-716e-4495-bb08-fc5f0180ea60,86d1db43-4920-4a33-85ed-5c6e11ad3adc,Parcelle Pindikro,cacao,2.5,Pindikro,6.82,-5.02,2026-10-18T06:23:50.332112+00:00
+c8a87104-259c-455f-9e0d-d00958da70cd,86d1db43-4920-4a33-85ed-5c6e11ad3adc,Parcelle Principale,cacao,0.0,Pindikro,,,2026-10-18T03:28:23.262249+00:00
+49cc38dd-26fc-40ef-af73-e8d74d38c960,45d661b3-072b-44f9-a0f6-6d7532708b26,Parcelle Kôkô,cacao,4.5,Soubré,5.78,-6.6,2026-10-18T03:17:46.981286+00:00
