@@ -1372,6 +1372,9 @@ async def get_cooperative_analytics(
 # ============================================================
 
 _ML_CHURN_ARTEFACT = None
+_CHURN_CACHE = None
+_CHURN_CACHE_TIME = None
+CACHE_TTL_SECONDS = 30  # Cache de 30 secondes pour une réactivité instantanée (<100ms)
 
 def get_churn_model():
     global _ML_CHURN_ARTEFACT
@@ -1400,6 +1403,11 @@ async def get_cooperative_churn_predictions(
     des planteurs de la coopérative stockés dans Neon DB.
     Calcule dynamiquement les métriques, matrices et scores de décrochage.
     """
+    global _CHURN_CACHE, _CHURN_CACHE_TIME
+    now_ts = datetime.now(timezone.utc).timestamp()
+    if _CHURN_CACHE is not None and _CHURN_CACHE_TIME is not None:
+        if (now_ts - _CHURN_CACHE_TIME) < CACHE_TTL_SECONDS:
+            return _CHURN_CACHE
     coop_id = admin.cooperative_id
     coop = await conn.fetchrow("SELECT id, name FROM cooperatives WHERE id = $1", coop_id)
     coop_name = coop["name"] if coop else (admin.cooperative_name or "Coopérative")
@@ -1587,7 +1595,7 @@ async def get_cooperative_churn_predictions(
     else:
         summary_text = f"L'ensemble des {total_members} membres présente un niveau de fidélité optimal."
 
-    return ChurnPredictionResponse(
+    res = ChurnPredictionResponse(
         cooperative_id=coop_id,
         cooperative_name=coop_name,
         generated_at=datetime.now(timezone.utc),
@@ -1599,6 +1607,9 @@ async def get_cooperative_churn_predictions(
         critical_count=critical_count,
         summary_text=summary_text,
     )
+    _CHURN_CACHE = res
+    _CHURN_CACHE_TIME = datetime.now(timezone.utc).timestamp()
+    return res
 
 
 @router.post("/predictions/simulate-churn", response_model=SimulateChurnResponse)
@@ -1673,6 +1684,8 @@ async def simulate_churn_prediction(
 # --- 7. PRÉVISION DU TONNAGE & BENCHMARK MACHINE LEARNING ---
 
 _ML_TONNAGE_ARTEFACT = None
+_TONNAGE_CACHE = None
+_TONNAGE_CACHE_TIME = None
 
 def get_tonnage_model():
     global _ML_TONNAGE_ARTEFACT
@@ -1700,6 +1713,11 @@ async def get_cooperative_tonnage_predictions(
     Calcule en direct le cumul des récoltes depuis Neon DB (31,77 T) et génère
     la projection prévisionnelle de campagne avec le modèle XGBoost Regressor.
     """
+    global _TONNAGE_CACHE, _TONNAGE_CACHE_TIME
+    now_ts = datetime.now(timezone.utc).timestamp()
+    if _TONNAGE_CACHE is not None and _TONNAGE_CACHE_TIME is not None:
+        if (now_ts - _TONNAGE_CACHE_TIME) < CACHE_TTL_SECONDS:
+            return _TONNAGE_CACHE
     coop_id = admin.cooperative_id
     coop = await conn.fetchrow("SELECT id, name FROM cooperatives WHERE id = $1", coop_id)
     coop_name = coop["name"] if coop else (admin.cooperative_name or "Coopérative")
@@ -1814,7 +1832,7 @@ async def get_cooperative_tonnage_predictions(
         f"avec 95 % de confiance statistique."
     )
 
-    return TonnagePredictionResponse(
+    res = TonnagePredictionResponse(
         cooperative_id=coop_id,
         cooperative_name=coop_name,
         generated_at=datetime.now(timezone.utc),
@@ -1838,6 +1856,9 @@ async def get_cooperative_tonnage_predictions(
         ],
         summary_text=summary_text,
     )
+    _TONNAGE_CACHE = res
+    _TONNAGE_CACHE_TIME = datetime.now(timezone.utc).timestamp()
+    return res
 
 
 @router.post("/predictions/simulate-tonnage", response_model=SimulateTonnageResponse)
