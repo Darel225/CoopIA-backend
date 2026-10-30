@@ -63,7 +63,7 @@ async def send_message(
                   AND text != 'Ceci est une réponse simulée de l''assistant CoopIA.'
                   AND text NOT LIKE 'Ceci est une réponse simulée à : %'
                 ORDER BY created_at DESC
-                LIMIT 10
+                LIMIT 6
                 """,
                 session_id
             )
